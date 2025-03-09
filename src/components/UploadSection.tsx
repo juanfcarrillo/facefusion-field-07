@@ -38,10 +38,16 @@ const UploadSection = () => {
   // Initialize camera stream
   const initializeCamera = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: "user" }, 
+      // Set video constraints for 9:16 aspect ratio
+      const constraints = { 
+        video: { 
+          facingMode: "user",
+          aspectRatio: 9/16 // Set aspect ratio to 9:16 (portrait)
+        }, 
         audio: false 
-      });
+      };
+      
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
       
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -224,16 +230,19 @@ const UploadSection = () => {
                 
                 {uploadMethod === 'camera' && !previewUrl && (
                   <div className="mb-6 w-full">
-                    <div className="relative w-full h-60 border-2 border-primary/40 rounded-md flex flex-col items-center justify-center gap-3 bg-black/30">
-                      <video 
-                        ref={videoRef}
-                        className="absolute inset-0 h-full w-full object-cover rounded-md"
-                        autoPlay
-                        playsInline
-                      />
-                      <canvas ref={canvasRef} className="hidden" />
+                    {/* 9:16 aspect ratio container for camera */}
+                    <div className="relative w-full max-w-[calc(60vh*9/16)] mx-auto" style={{ aspectRatio: '9/16' }}>
+                      <div className="absolute inset-0 border-2 border-primary/40 rounded-md bg-black/30 overflow-hidden">
+                        <video 
+                          ref={videoRef}
+                          className="absolute inset-0 h-full w-full object-cover rounded-md"
+                          autoPlay
+                          playsInline
+                        />
+                        <canvas ref={canvasRef} className="hidden" />
+                      </div>
                       
-                      <div className="absolute bottom-4 flex gap-4 z-10">
+                      <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-4 z-10">
                         <Button onClick={initializeCamera} variant="secondary" className="bg-secondary/80">
                           Start Camera
                         </Button>
@@ -252,11 +261,11 @@ const UploadSection = () => {
                 
                 {previewUrl && (
                   <div className="mb-6 w-full">
-                    <div className="relative">
+                    <div className="relative max-w-[calc(60vh*9/16)] mx-auto" style={{ aspectRatio: '9/16' }}>
                       <img 
                         src={previewUrl} 
                         alt="Preview" 
-                        className="w-full h-60 object-contain rounded-md border-2 border-primary"
+                        className="w-full h-full object-cover rounded-md border-2 border-primary"
                       />
                       <Button
                         variant="ghost"
