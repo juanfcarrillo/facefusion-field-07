@@ -22,14 +22,6 @@ const Navbar = () => {
           <h1 className="font-bold text-xl">Syntax Error</h1>
         </div>
         
-        <div className="flex gap-4 items-center">
-          <button 
-            onClick={handleLoginClick}
-            className="px-4 py-2 text-sm font-medium text-white bg-muted rounded-md hover:bg-muted/80 transition-colors"
-          >
-            Login
-          </button>
-        </div>
       </div>
     </nav>
   );
