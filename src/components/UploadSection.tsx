@@ -1,15 +1,22 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Upload, Camera, Image, ArrowRight } from "lucide-react";
+import { Upload, Camera, Image, ArrowRight, Loader2 } from "lucide-react";
+import { uploadFaceImage } from "@/services/uploadService";
 
 const UploadSection = () => {
   const { toast } = useToast();
   const [uploadMethod, setUploadMethod] = useState<'file' | 'camera' | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [capturedImage, setCapturedImage] = useState<File | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   
+  // Handle file selection from upload
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -24,23 +31,93 @@ const UploadSection = () => {
       
       const url = URL.createObjectURL(file);
       setPreviewUrl(url);
+      setCapturedImage(file);
     }
   };
   
-  const captureFromCamera = () => {
-    toast({
-      title: "Camera Activated",
-      description: "Please position your face in the frame and click capture."
-    });
-    // In a real implementation, we would initialize the camera here
-    // For this demo, we're using a placeholder
-    setTimeout(() => {
-      setPreviewUrl('/placeholder.svg');
-    }, 1000);
+  // Initialize camera stream
+  const initializeCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: "user" }, 
+        audio: false 
+      });
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        streamRef.current = stream;
+      }
+      
+      toast({
+        title: "Camera Activated",
+        description: "Position your face in the frame and click capture."
+      });
+      
+    } catch (err) {
+      toast({
+        title: "Camera Error",
+        description: "Could not access your camera. Please check permissions.",
+        variant: "destructive"
+      });
+      console.error("Camera error:", err);
+    }
   };
   
-  const processUpload = () => {
-    if (!previewUrl) {
+  // Capture image from camera
+  const captureFromCamera = () => {
+    if (!videoRef.current || !canvasRef.current) return;
+    
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const context = canvas.getContext('2d');
+    
+    if (!context) return;
+    
+    // Set canvas dimensions to match video
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    
+    // Draw the video frame to the canvas
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    // Convert canvas to blob
+    canvas.toBlob((blob) => {
+      if (blob) {
+        const url = URL.createObjectURL(blob);
+        setPreviewUrl(url);
+        
+        // Create a File object from the blob
+        const file = new File([blob], "camera-capture.jpg", { type: "image/jpeg" });
+        setCapturedImage(file);
+        
+        // Stop the camera stream
+        stopCameraStream();
+      }
+    }, 'image/jpeg', 0.95);
+  };
+  
+  // Stop the camera stream
+  const stopCameraStream = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+  };
+  
+  // Clean up when changing methods or cancelling
+  const cleanUp = () => {
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+    }
+    stopCameraStream();
+    setUploadMethod(null);
+    setPreviewUrl(null);
+    setCapturedImage(null);
+  };
+  
+  // Process the upload
+  const processUpload = async () => {
+    if (!capturedImage) {
       toast({
         title: "No image selected",
         description: "Please upload or capture an image first",
@@ -49,21 +126,45 @@ const UploadSection = () => {
       return;
     }
     
-    toast({
-      title: "Processing...",
-      description: "Your 3D model is being generated. This may take a few moments."
-    });
+    setIsUploading(true);
     
-    // Reset the form after 2 seconds to simulate processing
-    setTimeout(() => {
-      setUploadMethod(null);
-      setPreviewUrl(null);
+    try {
+      const result = await uploadFaceImage(capturedImage);
+      
+      if (result.success) {
+        toast({
+          title: "Success!",
+          description: result.message
+        });
+        cleanUp();
+      } else {
+        toast({
+          title: "Upload Failed",
+          description: result.message,
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
       toast({
-        title: "Success!",
-        description: "Your 3D model has been created and added to your gallery."
+        title: "Error",
+        description: "An unexpected error occurred",
+        variant: "destructive"
       });
-    }, 2000);
+      console.error(error);
+    } finally {
+      setIsUploading(false);
+    }
   };
+  
+  // Clean up on unmount
+  React.useEffect(() => {
+    return () => {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+      stopCameraStream();
+    };
+  }, [previewUrl]);
   
   return (
     <div id="upload-section" className="py-20 px-4">
@@ -123,13 +224,28 @@ const UploadSection = () => {
                 
                 {uploadMethod === 'camera' && !previewUrl && (
                   <div className="mb-6 w-full">
-                    <div 
-                      className="w-full h-60 border-2 border-primary/40 rounded-md flex flex-col items-center justify-center gap-3 bg-black/30"
-                    >
-                      <Camera className="h-12 w-12 text-primary/60" />
-                      <Button onClick={captureFromCamera} variant="secondary">
-                        Initialize Camera
-                      </Button>
+                    <div className="relative w-full h-60 border-2 border-primary/40 rounded-md flex flex-col items-center justify-center gap-3 bg-black/30">
+                      <video 
+                        ref={videoRef}
+                        className="absolute inset-0 h-full w-full object-cover rounded-md"
+                        autoPlay
+                        playsInline
+                      />
+                      <canvas ref={canvasRef} className="hidden" />
+                      
+                      <div className="absolute bottom-4 flex gap-4 z-10">
+                        <Button onClick={initializeCamera} variant="secondary" className="bg-secondary/80">
+                          Start Camera
+                        </Button>
+                        <Button 
+                          onClick={captureFromCamera} 
+                          variant="secondary"
+                          className="bg-primary/80"
+                          disabled={!streamRef.current}
+                        >
+                          Capture
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -146,7 +262,13 @@ const UploadSection = () => {
                         variant="ghost"
                         size="sm"
                         className="absolute top-2 right-2 bg-background/50 hover:bg-background/70"
-                        onClick={() => setPreviewUrl(null)}
+                        onClick={() => {
+                          setPreviewUrl(null);
+                          setCapturedImage(null);
+                          if (uploadMethod === 'camera') {
+                            initializeCamera();
+                          }
+                        }}
                       >
                         Change
                       </Button>
@@ -157,10 +279,7 @@ const UploadSection = () => {
                 <div className="flex gap-4">
                   <Button
                     variant="outline"
-                    onClick={() => {
-                      setUploadMethod(null);
-                      setPreviewUrl(null);
-                    }}
+                    onClick={cleanUp}
                   >
                     Cancel
                   </Button>
@@ -169,9 +288,19 @@ const UploadSection = () => {
                     <Button 
                       className="gradient-bg hover:opacity-90"
                       onClick={processUpload}
+                      disabled={isUploading}
                     >
-                      <span>Process</span>
-                      <ArrowRight className="ml-2 h-4 w-4" />
+                      {isUploading ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          <span>Uploading...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>Upload</span>
+                          <ArrowRight className="ml-2 h-4 w-4" />
+                        </>
+                      )}
                     </Button>
                   )}
                 </div>
