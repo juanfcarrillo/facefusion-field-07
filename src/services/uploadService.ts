@@ -7,19 +7,24 @@ export async function uploadFaceImage(file: File): Promise<{ success: boolean; m
   try {
     // Create a FormData instance
     const formData = new FormData();
-    formData.append('faceImage', file);
+    formData.append('file', file);
     
     // For demo purposes, we'll log the form data and simulate a successful upload
     console.log('Uploading file:', file.name, 'Size:', file.size, 'Type:', file.type);
     
     // In a real application, you would send this to your backend
-    // const response = await fetch('https://your-api-endpoint.com/upload', {
-    //   method: 'POST',
-    //   body: formData,
-    // });
+    const response = await fetch(`${import.meta.env.VITE_ENDPOINT_URL}/upload`, {
+      method: 'POST',
+      body: formData,
+    });
     
-    // Simulating API call with a delay
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    if (!response.ok) {
+      throw new Error('Failed to upload image');
+    }
+
+    const jsonResponse = await response.json();
+
+    console.log('Response:', jsonResponse);
     
     // Return success response
     return {
